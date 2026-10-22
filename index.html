@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fix · GPS-inspired information architecture</title>
+<style>
+  :root { color-scheme: dark; --bg:#0b111b; --panel:#141e2c; --line:#36475c; --muted:#91a4b9; --ink:#e7f0fa; --blue:#69c8ff; --green:#79d9ae; --purple:#c0a0ff; --yellow:#f0cd80; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
+  main { max-width:1240px; margin:auto; padding:28px 20px 36px; }
+  header { display:flex; align-items:end; gap:20px; justify-content:space-between; flex-wrap:wrap; margin-bottom:18px; }
+  h1 { font-size:clamp(23px,3.3vw,34px); font-weight:680; letter-spacing:-.035em; margin:0; }
+  header p { color:var(--muted); margin:3px 0 0; }
+  button { background:#1e2d41; border:1px solid #40556c; padding:7px 14px; border-radius:8px; color:var(--ink); font:inherit; cursor:pointer; }
+  button:hover,button:focus-visible { background:#30445d; }
+  .viewport { border:1px solid #314357; border-radius:15px; overflow:hidden; background: radial-gradient(ellipse at 44% 43%, #14253a 0%, #0d1725 57%, #0b111b 100%); }
+  svg { display:block; width:100%; height:auto; }
+  .box { fill:#132033; stroke:#465e76; stroke-width:1.6; }
+  .remote { stroke:var(--blue); } .local {stroke:var(--green)} .nats {stroke:var(--yellow)} .compute {stroke:var(--purple)} .cache {stroke:#76d7d9}
+  .heading {fill:var(--ink); font-size:20px; font-weight:680} .sub {fill:var(--muted); font-size:14px} .small {fill:#acc0d3;font-size:12.5px} .code {fill:#c8e4f1;font:13px ui-monospace, SFMono-Regular, Consolas, monospace}
+  .tag {fill:#21354b;stroke:#415d78;stroke-width:1} .wire {fill:none;stroke:#7089a5;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;opacity:.72} .return {stroke:var(--purple);stroke-dasharray:7 8} .out {stroke:#6ccdd1} .dot {filter:drop-shadow(0 0 5px currentColor)}
+  .gridline {stroke:#34445b;stroke-width:.6;opacity:.2}
+  .pulse-ring { fill:none;stroke:var(--yellow);stroke-width:1.7;transform-origin:600px 335px;animation:ring 3s ease-out infinite; }
+  .pulse-ring.second { animation-delay:1.5s; }
+  @keyframes ring {0% {transform:scale(.84);opacity:.65} 95%,100%{transform:scale(1.32);opacity:0}}
+  .orbit {fill:none;stroke:#456b8a;stroke-width:1.4;stroke-dasharray:4 10;opacity:.7}
+  .sats { fill:#11253a; stroke:#75bdf0;stroke-width:2 } .sats.local-color{stroke:#79d9ae}
+  /* The two satellites are purely inline SVG; nothing is loaded externally. */
+  .satellite { color:var(--blue); }
+  .satellite.near { color:var(--green); }
+  .satellite .floating { transform-box:fill-box; transform-origin:center; animation:float 5s ease-in-out infinite; }
+  .satellite.near .floating { animation-delay:-2s; }
+  .satellite .wave { fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; animation:signal 2.5s ease-in-out infinite; }
+  .satellite .wave.second { animation-delay:.45s; }
+  .satellite-label { fill:#bbcedd; font-size:12px; text-anchor:middle; font-weight:650; letter-spacing:.08em; }
+  @keyframes float { 0%,100% { transform:translateY(-3px) } 50% { transform:translateY(4px) } }
+  @keyframes signal { 0%,100% { opacity:.15 } 40% { opacity:.88 } 75% { opacity:.3 } }
+  .num {fill:#acc6da;font-size:12px;font-weight:700;letter-spacing:.14em}
+  .bottom {display:grid;grid-template-columns:1.2fr 1fr;gap:15px;margin-top:14px}
+  .note {background:var(--panel);border:1px solid #324358;border-radius:11px;padding:12px 15px;color:var(--muted);font-size:13px}
+  .note strong {color:var(--ink)} code {color:#b9e9f1} .note p {margin:5px 0 0}
+  @media(max-width:700px){ main{padding:16px 10px} .bottom{grid-template-columns:1fr} }
+  @media(prefers-reduced-motion:reduce){ .pulse-ring {animation:none;display:none} .satellite .floating,.satellite .wave{animation:none} }
+  body.paused .pulse-ring,body.paused .satellite .floating,body.paused .satellite .wave {animation-play-state:paused}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div><h1>Fix · GPS-inspired architecture</h1><p>Observe → publish → derive → materialize → read</p></div>
+  <button id="toggle" type="button" aria-pressed="false">Pause animation</button>
+</header>
+<div class="viewport">
+<svg id="diagram" viewBox="0 0 1200 775" role="img" aria-labelledby="svg-title svg-desc" xmlns="http://www.w3.org/2000/svg">
+<title id="svg-title">NATS-native information collection and processing architecture</title>
+<desc id="svg-desc">Remote and local collector daemons publish timestamped observations to NATS. A receiver routes observations to calculators and predictors. Results are published as events and materialized into files for instant CLI access.</desc>
+<defs>
+ <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M30 0H0V30" fill="none" stroke="#3a4b62" stroke-width=".6" opacity=".16"/></pattern>
+ <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M1 1L8 4.5 1 8" fill="none" stroke="#819ab5" stroke-width="1.6"/></marker>
+ <marker id="arrowPurple" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M1 1L8 4.5 1 8" fill="none" stroke="#c0a0ff" stroke-width="1.6"/></marker>
+ <g id="satellite-icon" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+   <!-- Paired solar-panel arrays, simple grid cells. -->
+   <rect x="-78" y="-22" width="48" height="44" rx="3" fill="#132942"/>
+   <rect x="30" y="-22" width="48" height="44" rx="3" fill="#132942"/>
+   <path d="M-54-22V22 M-78 0H-30 M54-22V22 M30 0H78" stroke-width="1.5" opacity=".7"/>
+   <path d="M-30 0H-21 M21 0H30" stroke-width="3"/>
+   <!-- Central electronics module and narrow antenna boom. -->
+   <rect x="-21" y="-15" width="42" height="30" rx="7" fill="#273d57"/>
+   <rect x="-11" y="-10" width="22" height="20" rx="3" fill="#344f70" stroke-width="1"/>
+   <path d="M0-15V-34 M-12-38Q0-22 12-38" fill="none"/>
+   <circle cx="0" cy="-35" r="3.2" fill="currentColor" stroke="none"/>
+ </g>
+</defs>
+<rect width="1200" height="775" fill="url(#grid)"/>
+
+<!-- Wiring appears beneath nodes. -->
+<g class="wire">
+ <path id="r2n" d="M330 188 C430 188 475 283 518 320" marker-end="url(#arrow)" />
+ <path id="l2n" d="M870 188 C770 188 725 283 682 320" marker-end="url(#arrow)" />
+ <path id="n2r" d="M600 393 V477" marker-end="url(#arrow)"/>
+ <path id="r2c" d="M704 521 H787" marker-end="url(#arrow)"/>
+ <path id="c2f" d="M1009 552 V637 H1050" marker-end="url(#arrow)"/>
+ <path id="derived2n" d="M1009 516 H1072 V426 Q1072 416 1062 416 H690 Q680 416 680 406" class="return" marker-end="url(#arrowPurple)"/>
+ <path id="c2file" d="M789 568 V675 H686" class="out" marker-end="url(#arrow)"/>
+</g>
+
+<!-- Traveling samples are genuine SVG animation, not an image. -->
+<g class="travel">
+ <circle r="5" fill="#69c8ff" class="dot" style="color:#69c8ff"><animateMotion dur="3s" repeatCount="indefinite"><mpath href="#r2n"/></animateMotion></circle>
+ <circle r="5" fill="#79d9ae" class="dot" style="color:#79d9ae"><animateMotion dur="3.4s" repeatCount="indefinite"><mpath href="#l2n"/></animateMotion></circle>
+ <circle r="5" fill="#f0cd80" class="dot" style="color:#f0cd80"><animateMotion dur="2.5s" repeatCount="indefinite"><mpath href="#n2r"/></animateMotion></circle>
+ <circle r="5" fill="#c0a0ff" class="dot" style="color:#c0a0ff"><animateMotion dur="2.6s" repeatCount="indefinite"><mpath href="#r2c"/></animateMotion></circle>
+ <circle r="5" fill="#c0a0ff" class="dot" style="color:#c0a0ff"><animateMotion dur="4.4s" repeatCount="indefinite"><mpath href="#derived2n"/></animateMotion></circle>
+ <circle r="5" fill="#6ccdd1" class="dot" style="color:#6ccdd1"><animateMotion dur="2.8s" repeatCount="indefinite"><mpath href="#c2file"/></animateMotion></circle>
+</g>
+
+<!-- Two compact vector satellites illustrate collector nodes. Orbit is metaphorical. -->
+<g class="satellite" transform="translate(421 113)">
+  <g class="floating">
+    <g transform="rotate(-18)"><use href="#satellite-icon"/></g>
+    <path class="wave" d="M43-45Q59-38 64-21"/>
+    <path class="wave second" d="M50-56Q75-47 82-23"/>
+  </g>
+</g>
+<text class="satellite-label" x="421" y="196">REMOTE SATELLITE</text>
+<g class="satellite near" transform="translate(779 113)">
+  <g class="floating">
+    <g transform="rotate(18)"><use href="#satellite-icon"/></g>
+    <path class="wave" d="M-43-45Q-59-38-64-21"/>
+    <path class="wave second" d="M-50-56Q-75-47-82-23"/>
+  </g>
+</g>
+<text class="satellite-label" x="779" y="196">LOCAL SATELLITE</text>
+
+<!-- Satellites contain the on-call collectors. High / low orbit is conceptual. -->
+<g>
+ <rect x="48" y="60" width="282" height="252" rx="14" class="box remote"/>
+ <text x="68" y="88" class="num">01  REMOTE NODE</text>
+ <text x="68" y="117" class="heading">Satellite daemon</text>
+ <text x="68" y="140" class="sub">Schedules / powers collectors</text>
+ <rect x="68" y="160" width="242" height="35" rx="7" class="tag"/>
+ <text x="84" y="183" class="code">weather.collect()</text>
+ <rect x="68" y="201" width="242" height="35" rx="7" class="tag"/>
+ <text x="84" y="224" class="code">traffic.collect()</text>
+ <rect x="68" y="242" width="242" height="35" rx="7" class="tag"/>
+ <text x="84" y="265" class="code">market.collect()</text>
+ <text x="68" y="299" class="small">API requests · scheduled polls</text>
+ <rect x="870" y="60" width="282" height="252" rx="14" class="box local"/>
+ <text x="890" y="88" class="num">02  LOCAL NODE</text>
+ <text x="890" y="117" class="heading">Satellite daemon</text>
+ <text x="890" y="140" class="sub">Owns host-specific collectors</text>
+ <rect x="890" y="160" width="242" height="35" rx="7" class="tag"/>
+ <text x="906" y="183" class="code">battery.collect()</text>
+ <rect x="890" y="201" width="242" height="35" rx="7" class="tag"/>
+ <text x="906" y="224" class="code">disk.collect()</text>
+ <rect x="890" y="242" width="242" height="35" rx="7" class="tag"/>
+ <text x="906" y="265" class="code">events.subscribe()</text>
+ <text x="890" y="299" class="small">/sys · D-Bus · local events</text>
+</g>
+
+<!-- NATS bus -->
+<g>
+ <circle class="pulse-ring" cx="600" cy="335" r="92"/>
+ <circle class="pulse-ring second" cx="600" cy="335" r="92"/>
+ <circle cx="600" cy="335" r="78" fill="#203046" stroke="#f0cd80" stroke-width="2.6"/>
+ <text x="600" y="330" text-anchor="middle" style="fill:#f9e5b8;font-size:34px;font-weight:760;letter-spacing:.05em">NATS</text>
+ <text x="600" y="355" text-anchor="middle" class="sub">signal fabric</text>
+ <text x="600" y="377" text-anchor="middle" class="small">obs.* / derived.*</text>
+ <text x="600" y="240" text-anchor="middle" class="small">timestamped observations</text>
+</g>
+
+<!-- Receiver -->
+<g>
+ <rect x="468" y="477" width="236" height="100" rx="13" class="box compute"/>
+ <text x="487" y="502" class="num">03  RECEIVER</text>
+ <text x="487" y="530" class="heading">Route + normalize</text>
+ <text x="487" y="552" class="sub">Subscribe · validate · dispatch</text>
+</g>
+
+<!-- Calculators and predictors -->
+<g>
+ <rect x="787" y="477" width="222" height="100" rx="13" class="box compute"/>
+ <text x="806" y="502" class="num">04  RESOLVERS</text>
+ <text x="806" y="530" class="heading">Derive + predict</text>
+ <text x="806" y="552" class="sub">Rate · forecast · anomaly</text>
+ <text x="795" y="462" class="small">deterministic calculations</text>
+</g>
+
+<!-- Output and persistence -->
+<g>
+ <rect x="48" y="626" width="638" height="112" rx="13" class="box cache"/>
+ <text x="68" y="653" class="num">05  TERMINALS / MATERIALIZED VALUES</text>
+ <text x="68" y="679" class="heading">Predictable files, instant reads</text>
+ <text x="68" y="707" class="code">/run/info/battery/discharge_rate</text>
+ <text x="68" y="726" class="code">$ fix get battery.discharge_rate</text>
+ <rect x="860" y="637" width="292" height="101" rx="13" class="box compute"/>
+ <text x="878" y="664" class="num">06  DOWNSTREAM</text>
+ <text x="878" y="691" class="heading">Events / AI inference</text>
+ <text x="878" y="714" class="sub">Async; never blocks reads</text>
+</g>
+
+<!-- Channel labels -->
+<text x="405" y="241" class="small" text-anchor="middle">obs.remote.*</text>
+<text x="795" y="241" class="small" text-anchor="middle">obs.local.*</text>
+<text x="712" y="438" class="small" fill="#c0a0ff">derived.* → NATS</text>
+<text x="710" y="660" class="small">atomic file writes</text>
+</svg>
+</div>
+<div class="bottom">
+  <div class="note"><strong>Reading is never collecting.</strong><p>Collectors run on schedules or events; resolvers compute values and atomically update cached files. A prompt only reads the cache. Returned scalars carry no formatting; units, timestamps and freshness live in metadata.</p></div>
+  <div class="note"><strong>Deployment detail.</strong><p>“Satellite” means a <em>collector node</em>, not necessarily a remote computer. <code>/run/info</code> is an illustrative runtime path (cleared after reboot); choose persistent storage separately for retained history. AI is asynchronous.</p></div>
+</div>
+</main>
+<script>
+(() => {
+  const svg = document.getElementById('diagram');
+  const btn = document.getElementById('toggle');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let paused = false;
+  if (reduced) { svg.pauseAnimations(); paused = true; document.body.classList.add('paused'); btn.textContent = 'Play animation'; btn.setAttribute('aria-pressed', 'true'); }
+  btn.addEventListener('click', () => {
+    paused = !paused;
+    if (paused) svg.pauseAnimations(); else svg.unpauseAnimations();
+    document.body.classList.toggle('paused', paused);
+    btn.textContent = paused ? 'Play animation' : 'Pause animation';
+    btn.setAttribute('aria-pressed', String(paused));
+  });
+})();
+</script>
+</body>
+</html>
